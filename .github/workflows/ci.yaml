@@ -1,0 +1,62 @@
+# CI/CD 파이프라인
+#  CI : app/ 이 바뀌면 이미지를 빌드해서 GHCR(GitHub 컨테이너 저장소)에 올린다
+#  CD : apps/hello/deployment.yaml 의 이미지 태그를 새 버전으로 바꿔 커밋한다
+#       → Argo CD가 Git 변경을 감지해서 서버에 배포한다 (서버에 직접 접속하지 않음)
+name: CI/CD - web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/ci.yaml"
+  workflow_dispatch: {}   # Actions 화면에서 수동 실행 버튼
+
+permissions:
+  contents: write         # deployment.yaml 수정 커밋을 push 하기 위해
+  packages: write         # GHCR에 이미지를 올리기 위해
+
+env:
+  IMAGE: ghcr.io/kowoonam/gitops-lab-web
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 소스 가져오기
+        uses: actions/checkout@v4
+
+      - name: 이미지 태그 정하기 (짧은 커밋 ID)
+        id: meta
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Docker 빌드 도구 준비
+        uses: docker/setup-buildx-action@v3
+
+      - name: GHCR 로그인
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 이미지 빌드 & 업로드
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          push: true
+          build-args: VERSION=${{ steps.meta.outputs.tag }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: 배포 YAML의 이미지 태그 갱신 (CD)
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          sed -i "s|image: .*|image: ${IMAGE}:${TAG}|" apps/hello/deployment.yaml
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "deploy: web ${TAG}"
+          git push
