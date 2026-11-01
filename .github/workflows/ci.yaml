@@ -24,24 +24,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 소스 가져오기
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 이미지 태그 정하기 (짧은 커밋 ID)
         id: meta
         run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Docker 빌드 도구 준비
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: GHCR 로그인
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 이미지 빌드 & 업로드
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: app
           push: true
